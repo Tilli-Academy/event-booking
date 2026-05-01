@@ -1,0 +1,50 @@
+services:
+  # ---- MongoDB ----
+  mongo:
+    image: mongo:7
+    container_name: eb-mongo
+    restart: unless-stopped
+    # No host port — only accessible to other containers via Docker network
+    expose:
+      - "27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---- Backend API ----
+  server:
+    build: ./server
+    container_name: eb-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/eventbooking
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_64_char_random_hex_string_before_production}
+      JWT_EXPIRE: 15m
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # ---- Frontend (nginx) ----
+  client:
+    build:
+      context: ./client
+      args:
+        VITE_API_URL: /api
+    container_name: eb-client
+    restart: unless-stopped
+    ports:
+      - "9000:80"
+    depends_on:
+      - server
+
+volumes:
+  mongo_data:
